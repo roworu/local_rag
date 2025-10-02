@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local RAG System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .upload-area:hover {
+            border-color: #0d6efd;
+            background-color: #f8f9fa;
+        }
+        .upload-area.dragover {
+            border-color: #0d6efd;
+            background-color: #e7f3ff;
+        }
+        .file-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        .answer-box {
+            background: #e7f3ff;
+            border-left: 4px solid #0d6efd;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        .source-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin: 0.5rem 0;
+            border-left: 3px solid #28a745;
+        }
+        .loading {
+            display: none;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-ready { background-color: #28a745; }
+        .status-error { background-color: #dc3545; }
+        .status-loading { background-color: #ffc107; }
+        .status-processing { background-color: #ffc107; }
+        .status-unprocessed { background-color: #6c757d; }
+    </style>
+</head>
+<body>
+    <!-- Notification Container -->
+    <div id="notificationContainer" style="position: fixed; top: 20px; right: 20px; z-index: 1050;"></div>
+    
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 bg-light p-4">
+                <h4><i class="fas fa-database"></i> Document Library</h4>
+                
+                <!-- System Status -->
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <span class="status-indicator" id="statusIndicator"></span>
+                            System Status
+                        </h6>
+                        <p class="card-text small" id="statusText">Checking...</p>
+                    </div>
+                </div>
+                
+                <!-- File Upload -->
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h6 class="card-title">Upload Documents</h6>
+                        <div class="upload-area" id="uploadArea">
+                            <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                            <p class="mb-2">Drag & drop PDF files here</p>
+                            <p class="small text-muted">or click to browse</p>
+                            <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;">
+                        </div>
+                        <div class="loading" id="uploadLoading">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span class="ms-2">Processing files...</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Uploaded Files -->
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="card-title mb-0">Uploaded Files</h6>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary me-2" onclick="toggleFileList()" id="toggleFilesBtn">
+                                <i class="fas fa-chevron-down"></i> Collapse
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteAllFiles()">
+                                <i class="fas fa-trash"></i> Delete All
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body" id="fileListContainer">
+                        <div id="fileList">
+                            <p class="text-muted small">No files uploaded yet</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 p-4">
+                <h2><i class="fas fa-question-circle"></i> Ask Questions</h2>
+                <p class="text-muted">Upload some PDF documents first, then ask questions about their content.</p>
+                
+                <!-- Question Form -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <form id="questionForm">
+                            <div class="mb-3">
+                                <label for="questionInput" class="form-label">Your Question</label>
+                                <textarea class="form-control" id="questionInput" rows="3" 
+                                    placeholder="Ask a question about your uploaded documents..." required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary" id="askButton">
+                                <i class="fas fa-search"></i> Ask Question
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- Answer Section -->
+                <div id="answerSection" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-lightbulb"></i> Answer</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="answer-box" id="answerBox">
+                                <!-- Answer will be displayed here -->
+                            </div>
+                            
+                            <!-- Sources -->
+                            <div class="mt-4">
+                                <h6><i class="fas fa-book"></i> Sources</h6>
+                                <div id="sourcesList">
+                                    <!-- Sources will be displayed here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Loading Indicator -->
+                <div class="loading text-center" id="answerLoading">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Thinking...</span>
+                    </div>
+                    <p class="mt-2">Processing your question...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let uploadedFiles = [];
+        let fileListCollapsed = false;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            checkStatus();
+            loadFiles();
+            setupEventListeners();
+        });
+        
+        // Setup event listeners
+        function setupEventListeners() {
+            // File upload
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+            
+            uploadArea.addEventListener('click', () => fileInput.click());
+            uploadArea.addEventListener('dragover', handleDragOver);
+            uploadArea.addEventListener('dragleave', handleDragLeave);
+            uploadArea.addEventListener('drop', handleDrop);
+            
+            fileInput.addEventListener('change', handleFileSelect);
+            
+            // Question form
+            document.getElementById('questionForm').addEventListener('submit', handleQuestionSubmit);
+        }
+        
+        // File upload handlers
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('dragover');
+        }
+        
+        function handleDragLeave(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('dragover');
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            uploadFiles(files);
+        }
+        
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            uploadFiles(files);
+        }
+        
+        // Upload files
+        async function uploadFiles(files) {
+            if (files.length === 0) return;
+            
+            const formData = new FormData();
+            Array.from(files).forEach(file => {
+                if (file.type === 'application/pdf') {
+                    formData.append('files', file);
+                }
+            });
+            
+            if (formData.getAll('files').length === 0) {
+                alert('Please select PDF files only.');
+                return;
+            }
+            
+            document.getElementById('uploadLoading').style.display = 'block';
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    // Show success message
+                    showNotification(`Successfully uploaded ${result.processed_files.length} file(s). Processing in background...`, 'success');
+                    
+                    // Reload files from server to get updated status
+                    await loadFiles();
+                    checkStatus();
+                    
+                    if (result.errors.length > 0) {
+                        showNotification('Some files had errors: ' + result.errors.join(', '), 'warning');
+                    }
+                } else {
+                    showNotification('Upload failed: ' + result.detail, 'error');
+                }
+            } catch (error) {
+                showNotification('Upload failed: ' + error.message, 'error');
+            } finally {
+                document.getElementById('uploadLoading').style.display = 'none';
+            }
+        }
+        
+        // Load files from server
+        async function loadFiles() {
+            try {
+                const response = await fetch('/files');
+                const result = await response.json();
+                uploadedFiles = result.files || [];
+                updateFileList();
+            } catch (error) {
+                console.error('Error loading files:', error);
+            }
+        }
+        
+        // Update file list display
+        function updateFileList() {
+            const fileList = document.getElementById('fileList');
+            
+            if (uploadedFiles.length === 0) {
+                fileList.innerHTML = '<p class="text-muted small">No files uploaded yet</p>';
+                return;
+            }
+            
+            fileList.innerHTML = uploadedFiles.map(file => {
+                const statusClass = getStatusClass(file.status);
+                const statusIcon = getStatusIcon(file.status);
+                const chunksText = file.chunks_count ? `${file.chunks_count} chunks` : (file.status === 'processing' ? 'Processing...' : 'Pending...');
+                const summary = file.summary ? `"${file.summary}"` : '';
+                const processingNote = file.status === 'processing' ? '<div class="mt-1"><small class="text-info"><i class="fas fa-info-circle"></i> Processing in background...</small></div>' : '';
+                
+                return `
+                    <div class="file-item">
+                        <div class="row">
+                            <div class="col-8">
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="fas fa-file-pdf text-danger me-2"></i>
+                                    <strong class="text-truncate" title="${file.filename}">${file.filename}</strong>
+                                </div>
+                                <div class="mb-1">
+                                    <small class="text-muted">
+                                        ${statusIcon} <span class="${statusClass}">${file.status}</span>
+                                        ${file.file_size ? ` • ${formatFileSize(file.file_size)}` : ''}
+                                    </small>
+                                </div>
+                                ${summary ? `
+                                    <div class="mb-1">
+                                        <small class="text-info text-break" title="${summary}">${summary}</small>
+                                    </div>
+                                ` : ''}
+                                ${processingNote}
+                            </div>
+                            <div class="col-4 text-end">
+                                <div class="mb-2">
+                                    <span class="badge bg-primary">${chunksText}</span>
+                                </div>
+                                <div class="btn-group-vertical btn-group-sm">
+                                    <button class="btn btn-outline-info btn-sm" onclick="copyFileInfo('${file.file_id}', this)" title="Copy file information">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="deleteFile('${file.file_id}')" title="Delete file">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function getStatusClass(status) {
+            switch(status) {
+                case 'completed': return 'text-success';
+                case 'processing': return 'text-warning fw-bold';
+                case 'unprocessed': return 'text-info';
+                case 'error': return 'text-danger';
+                default: return 'text-muted';
+            }
+        }
+        
+        function getStatusIcon(status) {
+            switch(status) {
+                case 'completed': return '<i class="fas fa-check-circle"></i>';
+                case 'processing': return '<i class="fas fa-cog fa-spin"></i>';
+                case 'unprocessed': return '<i class="fas fa-clock"></i>';
+                case 'error': return '<i class="fas fa-exclamation-circle"></i>';
+                default: return '<i class="fas fa-question-circle"></i>';
+            }
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        async function deleteFile(fileId) {
+            if (!confirm('Are you sure you want to delete this file?')) return;
+            
+            try {
+                const response = await fetch(`/files/${fileId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    await loadFiles();
+                    checkStatus();
+                } else {
+                    alert('Error deleting file');
+                }
+            } catch (error) {
+                alert('Error deleting file: ' + error.message);
+            }
+        }
+        
+        // Handle question submission
+        async function handleQuestionSubmit(e) {
+            e.preventDefault();
+            
+            const question = document.getElementById('questionInput').value.trim();
+            if (!question) return;
+            
+            document.getElementById('answerLoading').style.display = 'block';
+            document.getElementById('answerSection').style.display = 'none';
+            
+            try {
+                const formData = new FormData();
+                formData.append('question', question);
+                
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    displayAnswer(result);
+                } else {
+                    alert('Error: ' + result.detail);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                document.getElementById('answerLoading').style.display = 'none';
+            }
+        }
+        
+        // Display answer
+        function displayAnswer(result) {
+            const answerBox = document.getElementById('answerBox');
+            const sourcesList = document.getElementById('sourcesList');
+            
+            // Display answer
+            answerBox.innerHTML = `
+                <div class="mb-3">
+                    <strong>Question:</strong> ${result.question}
+                </div>
+                <div class="mb-3">
+                    <strong>Answer:</strong> ${result.answer}
+                </div>
+                <div class="small text-muted">
+                    <i class="fas fa-chart-line"></i> Confidence: ${result.confidence.toFixed(1)}%
+                </div>
+            `;
+            
+            // Display sources
+            if (result.sources && result.sources.length > 0) {
+                sourcesList.innerHTML = result.sources.map((source, index) => `
+                    <div class="source-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>Source ${index + 1}:</strong> ${source.file}
+                                <br>
+                                <small class="text-muted">Chunk ${source.chunk_index + 1}</small>
+                            </div>
+                            <span class="badge bg-success">${(source.similarity_score * 100).toFixed(1)}% match</span>
+                        </div>
+                        <div class="mt-2">
+                            <small class="text-muted">${source.text_preview}</small>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                sourcesList.innerHTML = '<p class="text-muted">No sources found</p>';
+            }
+            
+            document.getElementById('answerSection').style.display = 'block';
+        }
+        
+        // Check system status
+        async function checkStatus() {
+            try {
+                const response = await fetch('/status');
+                const status = await response.json();
+                
+                const indicator = document.getElementById('statusIndicator');
+                const statusText = document.getElementById('statusText');
+                
+                if (status.status === 'ready') {
+                    indicator.className = 'status-indicator status-ready';
+                    statusText.textContent = `Ready - ${status.files_count} files, ${status.chunks_count} chunks`;
+                } else {
+                    indicator.className = 'status-indicator status-error';
+                    statusText.textContent = 'Error: ' + (status.error || 'Unknown error');
+                }
+            } catch (error) {
+                const indicator = document.getElementById('statusIndicator');
+                const statusText = document.getElementById('statusText');
+                indicator.className = 'status-indicator status-error';
+                statusText.textContent = 'Connection error';
+            }
+        }
+        
+        // Toggle file list visibility
+        function toggleFileList() {
+            const container = document.getElementById('fileListContainer');
+            const button = document.getElementById('toggleFilesBtn');
+            const icon = button.querySelector('i');
+            
+            if (fileListCollapsed) {
+                container.style.display = 'block';
+                icon.className = 'fas fa-chevron-down';
+                button.innerHTML = '<i class="fas fa-chevron-down"></i> Collapse';
+                fileListCollapsed = false;
+            } else {
+                container.style.display = 'none';
+                icon.className = 'fas fa-chevron-right';
+                button.innerHTML = '<i class="fas fa-chevron-right"></i> Expand';
+                fileListCollapsed = true;
+            }
+        }
+        
+        // Copy file information to clipboard
+        function copyFileInfo(fileId, buttonElement) {
+            const file = uploadedFiles.find(f => f.file_id === fileId);
+            if (!file) {
+                alert('File not found');
+                return;
+            }
+            
+            const fileInfo = {
+                file_id: file.file_id,
+                filename: file.filename,
+                status: file.status,
+                file_size: file.file_size ? formatFileSize(file.file_size) : 'Unknown',
+                chunks_count: file.chunks_count || 0,
+                summary: file.summary || 'No summary available',
+                created_at: file.created_at || 'Unknown',
+                updated_at: file.updated_at || 'Unknown'
+            };
+            
+            const infoText = `File Information:
+ID: ${fileInfo.file_id}
+Filename: ${fileInfo.filename}
+Status: ${fileInfo.status}
+Size: ${fileInfo.file_size}
+Chunks: ${fileInfo.chunks_count}
+Summary: ${fileInfo.summary}
+Created: ${fileInfo.created_at}
+Updated: ${fileInfo.updated_at}`;
+            
+            navigator.clipboard.writeText(infoText).then(() => {
+                // Show temporary success message
+                const button = buttonElement || document.querySelector(`button[onclick*="${fileId}"]`);
+                if (button) {
+                    const originalIcon = button.innerHTML;
+                    button.innerHTML = '<i class="fas fa-check"></i>';
+                    button.classList.add('btn-success');
+                    button.classList.remove('btn-outline-info');
+                    
+                    setTimeout(() => {
+                        button.innerHTML = originalIcon;
+                        button.classList.remove('btn-success');
+                        button.classList.add('btn-outline-info');
+                    }, 2000);
+                }
+            }).catch(err => {
+                alert('Failed to copy to clipboard: ' + err);
+            });
+        }
+        
+        // Delete all files
+        async function deleteAllFiles() {
+            if (uploadedFiles.length === 0) {
+                alert('No files to delete');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to delete ALL ${uploadedFiles.length} files? This action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/files', {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(`Successfully deleted ${result.deleted_count} files`);
+                    await loadFiles();
+                    checkStatus();
+                } else {
+                    alert('Error deleting files');
+                }
+            } catch (error) {
+                alert('Error deleting files: ' + error.message);
+            }
+        }
+        
+        // Auto-refresh files every 5 seconds to show processing status
+        setInterval(async () => {
+            await loadFiles();
+            checkStatus();
+        }, 5000);
+        
+        // Notification system
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notificationContainer');
+            const notification = document.createElement('div');
+            
+            const alertClass = {
+                'success': 'alert-success',
+                'error': 'alert-danger',
+                'warning': 'alert-warning',
+                'info': 'alert-info'
+            }[type] || 'alert-info';
+            
+            notification.className = `alert ${alertClass} alert-dismissible fade show`;
+            notification.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            container.appendChild(notification);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
+
+

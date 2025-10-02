@@ -1,0 +1,49 @@
+services:
+
+  mongodb:
+    attach: false
+    image: mongo:8.0
+    container_name: rag_mongodb
+    #ports:
+    #  - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+
+  ollama:
+    attach: false
+    image: ollama/ollama:latest
+    container_name: rag_ollama
+    #ports:
+    #  - "11434:11434"
+    volumes:
+      - ./ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+#    deploy:
+#      resources:
+#        reservations:
+#          devices:
+#            - driver: nvidia
+#              count: all
+#              capabilities: [gpu]
+
+
+  rag_app:
+    build: .
+    container_name: rag_app
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - mongodb
+      - ollama
+    volumes:
+      - ./paddle_data:/root/.paddleocr/
+      - ./debug_md_states:/app/debug_md_states/
+
+
+volumes:
+  mongodb_data:
