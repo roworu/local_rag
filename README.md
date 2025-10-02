@@ -7,7 +7,7 @@ http://127.0.0.1:8000/
 
 ### how it works:
 
-[[schema.png]]
+![schema](schema.png)
 
 PDF Upload & Processing
 
