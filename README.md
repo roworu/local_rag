@@ -7,6 +7,8 @@ http://127.0.0.1:8000/
 
 ### how it works:
 
+[[schema.png]]
+
 PDF Upload & Processing
 
 1. PDF Upload (FastAPI /upload endpoint)
