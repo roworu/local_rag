@@ -16,6 +16,54 @@ logger = logging.getLogger(__name__)
 
 
 class PDFProcessor:
+    """
+    PDFProcessor represents pipeline of converting a PDF doc into
+    vector store data.
+
+    Workflow overview:
+        1. extract_text - extracts raw text, images, and tables from PDF.
+           - Uses PyMuPDF for page text, image data, and bounding boxes.
+           - Uses Camelot and pdfplumber to extract structured tables.
+           - Combines all data into single entity.
+
+        2. extract_images - gathers all extracted image objects for later OCR
+           and diagram processing.
+
+        3. generate_markdown - converts the extracted content into a Markdown
+           file, preserving page structure, text, tables, and image placeholders.
+
+        4. run_ocr - performs OCR on images using services.ocr_service.py,
+           inserting recognized text into the Markdown file.
+
+        5. clean_markdown - cleans and normalizes Markdown content using
+           services.markdown_cleaner.py (removes redundant newlines, fixes layout, etc).
+
+        6. process_diagrams - analyzes diagrams/charts using services.llm.ollama_service
+           and LLava model to generate text descriptions and replace image placeholders.
+
+        7. create_vector_docs - splits cleaned Markdown into paragraph-aware
+           text chunks, wraps them as LlamaIndex `Document` objects, and stores
+           them in ChromaDB for semantic search.
+
+        8. generate_summary - genwerates single sentence summary
+           of document using Ollama to show in UI.
+
+    Notes:
+        - Debug Markdown snapshots are saved after each major stage for urhter debugging and improvments
+         using _save_debug_state function
+
+    Returns:
+        A final dictionary from `process_pdf()` with:
+            {
+                "success": bool,
+                "markdown_path": str,
+                "documents_count": int,
+                "images_processed": int,
+                "summary": str,
+                "content_length": int
+            }
+    """
+
 
     def __init__(self, ollama_service: OllamaService):
         self.ollama_service = ollama_service
@@ -218,6 +266,11 @@ class PDFProcessor:
             return []
 
     def _split_markdown_content(self, content: str, chunk_size: int = 1000) -> List[str]:
+        """
+        Splits markdown text into chunks sized up to `chunk_size` characters without breaking paragraphs.
+        Paragraphs are separated by double newlines (\n\n), and grouped together until the next one 
+        would exceed the size limit.
+        """
         chunks = []
         current = []
 
